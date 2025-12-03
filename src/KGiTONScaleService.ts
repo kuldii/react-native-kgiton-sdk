@@ -174,7 +174,15 @@ export class KGiTONScaleService {
       return;
     }
 
-    await this.enableBluetooth();
+    // Check Bluetooth state
+    const state = await this.bleManager.state();
+    this.log(`Bluetooth state: ${state}`);
+    
+    if (state !== State.PoweredOn) {
+      const errorMsg = `Bluetooth not ready. State: ${state}`;
+      this.log(errorMsg, 'error');
+      throw new BLEConnectionException(errorMsg);
+    }
 
     this.updateConnectionState(ScaleConnectionState.SCANNING);
     this.availableDevices = [];
