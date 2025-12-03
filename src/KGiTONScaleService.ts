@@ -16,7 +16,7 @@ import {
   DeviceNotFoundException,
   LicenseKeyException,
 } from './exceptions';
-import { DataValidation, RetryPolicy, ConnectionStability } from './utils';
+import { DataValidation, RetryPolicy, ConnectionStability, stringToBase64, base64ToString } from './utils';
 
 /**
  * Event types for KGiTON Scale Service
@@ -363,7 +363,7 @@ export class KGiTONScaleService {
     this.log(`Triggering buzzer: ${command}`);
 
     try {
-      const base64Data = Buffer.from(command).toString('base64');
+      const base64Data = stringToBase64(command);
       await this.connectedDevice.writeCharacteristicWithoutResponseForService(
         BLEConstants.SERVICE_UUID,
         this.buzzerCharacteristicId,
@@ -463,7 +463,7 @@ export class KGiTONScaleService {
           }
 
           if (characteristic?.value) {
-            const response = Buffer.from(characteristic.value, 'base64').toString('utf-8').trim();
+            const response = base64ToString(characteristic.value).trim();
             this.log(`Control response received: ${response}`);
 
             // Resolve promise untuk _sendControlCommand
@@ -498,7 +498,7 @@ export class KGiTONScaleService {
 
           if (characteristic?.value) {
             try {
-              const weightStr = Buffer.from(characteristic.value, 'base64').toString('utf-8').trim();
+              const weightStr = base64ToString(characteristic.value).trim();
               this.log(`Raw data received: "${weightStr}"`, 'debug');
 
               const weight = DataValidation.parseWeight(weightStr);
@@ -528,11 +528,11 @@ export class KGiTONScaleService {
       throw new BLEConnectionException('Control characteristic tidak tersedia');
     }
 
-    this.log(`Sending control command: ${command.split(':')[0]}`);
+    this.log(`Sending control command: ${command}`);
 
     try {
-      const base64Data = Buffer.from(command).toString('base64');
-      await this.connectedDevice.writeCharacteristicWithoutResponseForService(
+      const base64Data = stringToBase64(command);
+      await this.connectedDevice.writeCharacteristicWithResponseForService(
         BLEConstants.SERVICE_UUID,
         this.controlCharacteristicId,
         base64Data
