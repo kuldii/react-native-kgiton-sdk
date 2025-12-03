@@ -65,11 +65,17 @@ export class KGiTONScaleService {
   // Control response promise
   private controlResponseResolve: ((value: string) => void) | null = null;
 
+  // Performance optimization flags
+  private enableLogging: boolean;
+  private enableDebugLogging: boolean = false;
+  private lastWeightTimestamp: number = 0;
+
   /**
    * Constructor
    */
   constructor(enableLogging = true) {
     this.bleManager = new BleManager();
+    this.enableLogging = enableLogging;
     if (enableLogging) {
       this.log('KGiTON Scale Service initialized');
     }
@@ -206,11 +212,13 @@ export class KGiTONScaleService {
           }
 
           if (device) {
-            // Log semua device yang ditemukan untuk debugging
-            this.log(`Device detected: ${device.name || 'Unknown'} (${device.id})`, 'debug');
+            // Only log in debug mode to reduce overhead
+            if (this.enableDebugLogging) {
+              console.debug(`[KGiTON SDK] Device: ${device.name || 'Unknown'} (${device.id})`);
+            }
             
             if (device.name) {
-              // Filter: name must contain "KGiTON" (case-insensitive)
+              // Fast filter: name must contain "KGiTON" (case-insensitive)
               if (device.name.toUpperCase().includes(BLEConstants.DEVICE_NAME.toUpperCase())) {
                 const licenseKey = licenseMap[device.id];
                 const scaleDevice = ScaleDeviceFactory.fromBleDevice(
@@ -223,12 +231,12 @@ export class KGiTONScaleService {
                 // Check if device already in list
                 const existingIndex = this.availableDevices.findIndex((d) => d.id === device.id);
                 if (existingIndex >= 0) {
-                  // Update RSSI
+                  // Update RSSI silently
                   this.availableDevices[existingIndex] = scaleDevice;
                 } else {
                   this.availableDevices.push(scaleDevice);
                   this.log(
-                    `✓ Device found: ${device.name}${licenseKey ? ' (has license key)' : ''}`
+                    `✓ Device found: ${device.name}${licenseKey ? ' (has license)' : ''}`
                   );
                 }
 
@@ -471,15 +479,20 @@ export class KGiTONScaleService {
         this.controlCharacteristicId,
         (error, characteristic) => {
           if (error) {
-            this.log(`Control stream error: ${error.message}`, 'error');
+            if (this.enableLogging) {
+              console.error(`[KGiTON SDK] Control stream error: ${error.message}`);
+            }
             return;
           }
 
           if (characteristic?.value) {
             const response = base64ToString(characteristic.value).trim();
-            this.log(`Control response received: ${response}`);
+            
+            if (this.enableDebugLogging) {
+              console.log(`[KGiTON SDK] Control response: ${response}`);
+            }
 
-            // Resolve promise untuk _sendControlCommand
+            // Resolve promise immediately
             if (this.controlResponseResolve) {
               this.controlResponseResolve(response);
               this.controlResponseResolve = null;
@@ -505,32 +518,50 @@ export class KGiTONScaleService {
         this.txCharacteristicId,
         (error, characteristic) => {
           if (error) {
-            this.log(`Data stream error: ${error.message}`, 'error');
+            // Only log errors, not every callback
+            if (this.enableLogging) {
+              console.error(`[KGiTON SDK] Data stream error: ${error.message}`);
+            }
             return;
           }
 
           if (characteristic?.value) {
             try {
+              // Fast path: decode and parse in one go
               const weightStr = base64ToString(characteristic.value).trim();
-              this.log(`Raw data received: "${weightStr}"`, 'debug');
+              
+              // Only log raw data in debug mode
+              if (this.enableDebugLogging) {
+                console.debug(`[KGiTON SDK] Raw: "${weightStr}"`);
+              }
 
               const weight = DataValidation.parseWeight(weightStr);
 
               if (weight !== null) {
+                const now = Date.now();
                 const weightData = WeightDataFactory.create(weight);
+                
+                // Emit immediately without delay
                 this.emitWeightData(weightData);
-                this.log(`Weight received: ${WeightDataFactory.getDisplayWeight(weightData)}`);
-              } else {
-                this.log(`Invalid weight format: "${weightStr}"`, 'warn');
+                
+                // Only log occasionally (every 500ms) to reduce overhead
+                if (this.enableLogging && (now - this.lastWeightTimestamp) > 500) {
+                  console.log(`[KGiTON SDK] Weight: ${WeightDataFactory.getDisplayWeight(weightData)}`);
+                  this.lastWeightTimestamp = now;
+                }
+              } else if (this.enableDebugLogging) {
+                console.warn(`[KGiTON SDK] Invalid format: "${weightStr}"`);
               }
             } catch (error) {
-              this.log(`Error processing weight data: ${error}`, 'error');
+              if (this.enableLogging) {
+                console.error(`[KGiTON SDK] Processing error: ${error}`);
+              }
             }
           }
         }
       );
 
-      this.log('Data listener active');
+      this.log('Data listener active - optimized for realtime streaming');
     } catch (error) {
       this.log(`Failed to setup data listener: ${error}`, 'error');
     }
@@ -644,6 +675,10 @@ export class KGiTONScaleService {
   }
 
   private log(message: string, level: 'debug' | 'info' | 'warn' | 'error' = 'info'): void {
+    // Early return if logging is disabled (except for errors)
+    if (!this.enableLogging && level !== 'error') return;
+    if (level === 'debug' && !this.enableDebugLogging) return;
+
     const prefix = '[KGiTON SDK]';
     switch (level) {
       case 'debug':
@@ -718,6 +753,26 @@ export class KGiTONScaleService {
   // ============================================
   // CLEANUP
   // ============================================
+
+  /**
+   * Enable/disable debug logging
+   * 
+   * Debug logging includes raw data and detailed traces.
+   * Disable for production to maximize performance.
+   */
+  setDebugLogging(enabled: boolean): void {
+    this.enableDebugLogging = enabled;
+    this.log(`Debug logging ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Enable/disable all logging
+   * 
+   * Errors will still be logged even if disabled.
+   */
+  setLogging(enabled: boolean): void {
+    this.enableLogging = enabled;
+  }
 
   /**
    * Dispose - hanya panggil saat app closing

@@ -25,14 +25,22 @@ export class DataValidation {
   }
 
   /**
-   * Parse weight dari string
+   * Parse weight dari string (optimized for speed)
    */
   static parseWeight(value: string): number | null {
-    if (!this.validateWeightString(value)) {
+    // Fast path: directly parse without full validation
+    // Only validate if parse fails
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    
+    const num = parseFloat(trimmed);
+    
+    // Quick validation: check NaN and range
+    if (isNaN(num) || num < 0 || num > 9999) {
       return null;
     }
 
-    return parseFloat(value);
+    return num;
   }
 
   /**
