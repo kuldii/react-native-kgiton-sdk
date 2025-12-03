@@ -197,30 +197,35 @@ export class KGiTONScaleService {
             return;
           }
 
-          if (device && device.name) {
-            // Filter: name must contain "KGiTON" (case-insensitive)
-            if (device.name.toUpperCase().includes(BLEConstants.DEVICE_NAME.toUpperCase())) {
-              const licenseKey = licenseMap[device.id];
-              const scaleDevice = ScaleDeviceFactory.fromBleDevice(
-                device.name,
-                device.id,
-                device.rssi || 0,
-                licenseKey
-              );
-
-              // Check if device already in list
-              const existingIndex = this.availableDevices.findIndex((d) => d.id === device.id);
-              if (existingIndex >= 0) {
-                // Update RSSI
-                this.availableDevices[existingIndex] = scaleDevice;
-              } else {
-                this.availableDevices.push(scaleDevice);
-                this.log(
-                  `✓ Device found: ${device.name}${licenseKey ? ' (has license key)' : ''}`
+          if (device) {
+            // Log semua device yang ditemukan untuk debugging
+            this.log(`Device detected: ${device.name || 'Unknown'} (${device.id})`, 'debug');
+            
+            if (device.name) {
+              // Filter: name must contain "KGiTON" (case-insensitive)
+              if (device.name.toUpperCase().includes(BLEConstants.DEVICE_NAME.toUpperCase())) {
+                const licenseKey = licenseMap[device.id];
+                const scaleDevice = ScaleDeviceFactory.fromBleDevice(
+                  device.name,
+                  device.id,
+                  device.rssi || 0,
+                  licenseKey
                 );
-              }
 
-              this.emitDevicesFound();
+                // Check if device already in list
+                const existingIndex = this.availableDevices.findIndex((d) => d.id === device.id);
+                if (existingIndex >= 0) {
+                  // Update RSSI
+                  this.availableDevices[existingIndex] = scaleDevice;
+                } else {
+                  this.availableDevices.push(scaleDevice);
+                  this.log(
+                    `✓ Device found: ${device.name}${licenseKey ? ' (has license key)' : ''}`
+                  );
+                }
+
+                this.emitDevicesFound();
+              }
             }
           }
         }
